@@ -185,7 +185,7 @@ write_desktop() {
 [Desktop Entry]
 Type=Application
 Name=Arizona Games Launcher
-Comment=Arizona RP (GTA SA:MP) через Proton
+Comment=Arizona RP (SA:MP) и Rodina RP (CRMP) через Proton
 Exec=$BIN
 Icon=$icon
 Terminal=false

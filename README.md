@@ -1,6 +1,7 @@
 # arizona-winello
 
-Установка и запуск **Arizona Games Launcher** (Arizona RP, GTA SA:MP) на Linux через
+Установка и запуск **Arizona Games Launcher** на Linux: в нём **Arizona RP** (GTA SA:MP)
+и **Rodina RP** (CRMP). Работает через
 [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) и GE-Proton.
 По мотивам [osu-winello](https://github.com/NelloKudo/osu-winello).
 
