@@ -16,15 +16,61 @@
 
 ## Зависимости
 
-Arch / CachyOS:
+Нужны: `umu-launcher`, `winetricks`, `zenity`, `7z` или `7zz`, `curl` и шрифт Noto Sans.
+По желанию: `gamemode` и `mangohud`. Сам GE-Proton ставить не нужно: если его нет в системе,
+umu скачает свежий сам.
+
+**Arch / CachyOS / Manjaro**
 
 ```sh
-sudo pacman -S umu-launcher winetricks zenity 7zip curl noto-fonts
-# по желанию
-sudo pacman -S gamemode mangohud
+sudo pacman -S umu-launcher winetricks zenity 7zip curl noto-fonts gamemode mangohud
 ```
 
-Для русских шрифтов нужна локаль `ru_RU.UTF-8` (в `/etc/locale.gen`, затем `sudo locale-gen`).
+**Debian 12–13 / Ubuntu 24.04+ / Mint**
+
+```sh
+sudo apt install winetricks zenity 7zip curl fonts-noto-core gamemode mangohud
+```
+
+umu-launcher в репозиториях Debian и Ubuntu нет. Возьми два `.deb` под свою систему
+(`umu-launcher_*_all_<система>.deb` и `python3-umu-launcher_*_amd64_<система>.deb`)
+со страницы [релизов umu](https://github.com/Open-Wine-Components/umu-launcher/releases)
+и поставь их: `sudo apt install ./umu-launcher_*.deb ./python3-umu-launcher_*.deb`.
+
+**Fedora 43–44**
+
+```sh
+sudo dnf install winetricks zenity p7zip p7zip-plugins curl google-noto-sans-fonts gamemode mangohud
+sudo dnf install https://github.com/Open-Wine-Components/umu-launcher/releases/latest/download/umu-launcher-<версия>.fc<версия Fedora>.x86_64.rpm
+```
+
+Точное имя rpm посмотри на странице [релизов umu](https://github.com/Open-Wine-Components/umu-launcher/releases).
+В Nobara umu уже есть в репозитории: `sudo dnf install umu-launcher`.
+
+**openSUSE Tumbleweed**
+
+```sh
+sudo zypper install winetricks zenity 7zip curl google-noto-sans-fonts gamemode mangohud
+```
+
+**Void Linux**
+
+```sh
+sudo xbps-install winetricks zenity 7zip curl noto-fonts-ttf gamemode MangoHud
+```
+
+Для openSUSE, Void и всех остальных дистрибутивов umu ставится из универсального zipapp:
+
+```sh
+curl -LO https://github.com/Open-Wine-Components/umu-launcher/releases/latest/download/umu-launcher-<версия>-zipapp.tar
+tar xf umu-launcher-*-zipapp.tar
+install -Dm755 umu/umu-run ~/.local/bin/umu-run
+```
+
+**NixOS**: `pkgs.umu-launcher` в nixpkgs начиная с 25.05.
+
+Для русских шрифтов нужна локаль `ru_RU.UTF-8`: раскомментируй её в `/etc/locale.gen`
+и запусти `sudo locale-gen` (в Debian и Ubuntu: `sudo dpkg-reconfigure locales`).
 
 ## Установка
 

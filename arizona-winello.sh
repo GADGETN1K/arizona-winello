@@ -102,13 +102,17 @@ run_winetricks() {
 
 # ---------- установка ----------
 
+# 7z (p7zip, Arch 7zip) или 7zz (пакет 7zip в Debian/Ubuntu)
+sevenzip() { command -v 7z || command -v 7zz; }
+
 check_deps() {
     local miss=() d
-    for d in zenity 7z curl; do command -v "$d" >/dev/null || miss+=("$d"); done
+    for d in zenity curl; do command -v "$d" >/dev/null || miss+=("$d"); done
+    sevenzip >/dev/null || miss+=(7zip)
     if [[ "$RUNNER" == umu ]]; then command -v umu-run >/dev/null || miss+=(umu-launcher)
     else command -v wine >/dev/null || miss+=(wine-staging); fi
     command -v winetricks >/dev/null || miss+=(winetricks)
-    ((${#miss[@]} == 0)) || die "не хватает: ${miss[*]}  (Arch: sudo pacman -S zenity 7zip umu-launcher winetricks)"
+    ((${#miss[@]} == 0)) || die "не хватает: ${miss[*]}  (команды для разных дистрибутивов в README)"
     locale -a 2>/dev/null | grep -qi '^ru_RU.utf' ||
         warn "нет локали ru_RU.UTF-8: раскомментируй её в /etc/locale.gen и запусти sudo locale-gen"
 }
@@ -166,7 +170,7 @@ find_launcher_exe() {
 
 extract_icon() {
     local exe="$1" tmp; tmp=$(mktemp -d)
-    if 7z x -y -o"$tmp" "$exe" '.rsrc/ICON/*' '.rsrc/*/ICON/*' >/dev/null 2>&1; then
+    if "$(sevenzip)" x -y -o"$tmp" "$exe" '.rsrc/ICON/*' '.rsrc/*/ICON/*' >/dev/null 2>&1; then
         # самый большой ресурс иконки обычно 256x256 PNG
         local best; best=$(find "$tmp" -type f -printf '%s %p\n' | sort -n | tail -n1 | cut -d' ' -f2-)
         if [[ -n "$best" ]] && file -b "$best" | grep -q PNG; then cp "$best" "$ICON"; fi
