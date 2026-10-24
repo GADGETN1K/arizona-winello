@@ -64,9 +64,6 @@ FPS_LIMIT="0"
 # Пока запущена игра, давать лаунчеру только свободный CPU (1/0)
 IDLE_LAUNCHER="1"
 
-# ArzMarket (MoonLoader-скрипт для рынка Arizona RP): 1 = поставить, как только игра скачана
-ARZMARKET="0"
-
 # Доп. переменные окружения через пробел, например "DXVK_HUD=fps PROTON_USE_WINED3D=1"
 EXTRA_ENV=""
 EOF
@@ -172,11 +169,11 @@ game_dir() { # папка Arizona RP внутри лаунчера, появля
     [[ -n "$LAUNCHER_EXE" && -f "$d/gta_sa.exe" ]] && echo "$d"
 }
 
-arzmarket_installed() { compgen -G "$1/moonloader/#ArzMarket*.lua" >/dev/null; }
-
 install_arzmarket() {
     local game tmp backup f
-    game=$(game_dir) || { warn "игра ещё не скачана: запусти arizona, скачай Arizona RP, ArzMarket встанет сам"; return 1; }
+    game=$(game_dir) || die "игра ещё не скачана: запусти arizona и скачай Arizona RP"
+    # MoonLoader по умолчанию не стоит, его ставит лаунчер Аризоны
+    [[ -f "$game/MoonLoader.asi" ]] || die "нет MoonLoader: поставь его в лаунчере Аризоны (раздел «Моды»), потом повтори"
     tmp=$(mktemp -d)
     msg "Качаю ArzMarket"
     curl -fL --retry 3 -# -o "$tmp/cache.zip" "$ARZMARKET_URL" || { rm -rf "$tmp"; die "не скачался ArzMarket"; }
@@ -203,7 +200,6 @@ remove_arzmarket() {
     game=$(game_dir) || die "игра не найдена"
     rm -rf "$game/moonloader/ArzMarket" "$game"/moonloader/\#ArzMarket*.lua "$game/moonloader/ArzMarket_Loader.lua"
     [[ -d "$backup" ]] && cp -r "$backup/." "$game/" && rm -f "$game/files.txt" && rm -rf "$backup"
-    set_config ARZMARKET "0"
     msg "ArzMarket удалён"
 }
 
@@ -261,10 +257,6 @@ do_install() {
     run_winetricks -q corefonts vcrun2022 || warn "winetricks завершился с ошибкой, продолжаю"
     install_fonts
 
-    if zenity --question --title="ArzMarket" --text="Поставить ArzMarket?\n\nЭто сторонний MoonLoader-скрипт для рынка Arizona RP (github.com/FREYM1337/forumnick).\nКод закрытый и сам обновляется из интернета, использование на свой риск.\n\nВстанет после того, как лаунчер скачает игру." 2>/dev/null; then
-        set_config ARZMARKET "1"
-    fi
-
     # electron-builder NSIS: /S ставит молча в %LOCALAPPDATA%\Programs
     msg "Тихо ставлю лаунчер"
     # в конце установщик пытается сам открыть лаунчер и ругается на ShellExecuteEx, это не страшно
@@ -316,9 +308,6 @@ do_run() {
     }
 
     clean_zone
-    if [[ "${ARZMARKET:-0}" == 1 ]] && game=$(game_dir) && ! arzmarket_installed "$game"; then
-        install_arzmarket || true
-    fi
     ( while sleep 3; do clean_zone; idle_launcher; done ) &
     local cleaner=$!
     trap 'kill $cleaner 2>/dev/null' EXIT
@@ -402,7 +391,7 @@ case "${1:-}" in
                        set_config LAUNCHER_EXE "$(realpath "$2")"; extract_icon "$2"; write_desktop ;;
     --fixfonts)        load_config; install_fonts; msg "Шрифты на месте" ;;
     --arzmarket)       load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe)
-                       install_arzmarket && set_config ARZMARKET "1" ;;
+                       install_arzmarket ;;
     --arzmarket-remove) load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe); remove_arzmarket ;;
     --info)            do_info ;;
     --edit-config)     load_config; "${EDITOR:-xdg-open}" "$CFG" ;;
