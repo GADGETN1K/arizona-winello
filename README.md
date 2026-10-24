@@ -13,7 +13,10 @@
 - удаляет файлы `*:Zone.Identifier`, которые Wine создаёт вместо скрытых потоков NTFS (из-за них игра падает на загрузке шрифтов);
 - пока идёт игра, отдаёт лаунчеру только свободное процессорное время (`SCHED_IDLE`);
 - запускает через Feral GameMode, по желанию с MangoHud и лимитом FPS через DXVK;
-- создаёт ярлык в меню с иконкой из exe.
+- создаёт ярлык в меню с иконкой из exe;
+- по желанию ставит [ArzMarket](https://github.com/FREYM1337/forumnick) (MoonLoader-скрипт для рынка
+  Arizona RP): установщик спросит об этом сам. Это сторонний скрипт с закрытым кодом, который
+  обновляется из интернета, так что ставишь на свой риск.
 
 ## Зависимости
 
@@ -94,6 +97,8 @@ arizona --winetricks .. winetricks в префиксе
 arizona --regedit       regedit
 arizona --set-exe PATH  указать exe лаунчера вручную
 arizona --fixfonts      подложить замену Segoe UI
+arizona --arzmarket     поставить ArzMarket
+arizona --arzmarket-remove  удалить ArzMarket и вернуть заменённые файлы
 arizona --info          показать настройки
 arizona --edit-config   открыть конфиг
 arizona --kill / --kill9
@@ -115,6 +120,7 @@ arizona --remove        удалить всё
 | `MANGOHUD` | `0` | оверлей MangoHud |
 | `FPS_LIMIT` | `0` | лимит FPS через DXVK, `0` = без лимита |
 | `IDLE_LAUNCHER` | `1` | `SCHED_IDLE` для лаунчера, пока идёт игра |
+| `ARZMARKET` | `0` | `1` = поставить ArzMarket, как только игра скачана |
 | `EXTRA_ENV` | | доп. переменные окружения |
 
 Чтобы GameMode мог менять governor и частоты GPU, добавь себя в группу `gamemode`
