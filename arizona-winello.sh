@@ -418,6 +418,7 @@ do_install() {
 do_run() {
     load_config
     self_update "$@"
+    kill_orphans
     [[ -n "$LAUNCHER_EXE" && -f "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe)
     [[ -n "$LAUNCHER_EXE" ]] || die "лаунчер не установлен: arizona-winello.sh install"
     check_wineland
@@ -475,14 +476,26 @@ Wayland:   $WAYLAND, сейчас $(use_wayland && echo "да (${PROTONPATH_WAYL
 EOF
 }
 
+# После закрытия лаунчера иногда остаётся рендерер Electron без главного процесса. Он держит
+# Wine и блокировку единственного экземпляра, и новый запуск молча висит. Такие хвосты убиваем
+kill_orphans() {
+    local procs
+    procs=$(pgrep -af 'Arizona Games Launcher\.exe' | grep -v pgrep) || return 0
+    grep -qv -- '--type=' <<<"$procs" && return 0   # главный процесс жив, это обычный повторный запуск
+    warn "остались процессы прошлого запуска, закрываю их"
+    do_kill 9
+    sleep 1
+}
+
 do_kill() {
     load_config
     if [[ "${1:-}" == 9 ]]; then
         pkill -9 -f "$WINEPREFIX" 2>/dev/null || true
         pkill -9 -fi 'arizona.*\.exe|gta_sa\.exe|cef_proc' 2>/dev/null || true
     else
-        local ws=wineserver
-        [[ "$RUNNER" == umu && -x "$PROTONPATH/files/bin/wineserver" ]] && ws="$PROTONPATH/files/bin/wineserver"
+        local ws=wineserver proton="$PROTONPATH"
+        use_wayland && [[ -x "${PROTONPATH_WAYLAND:-}/proton" ]] && proton="$PROTONPATH_WAYLAND"
+        [[ "$RUNNER" == umu && -x "$proton/files/bin/wineserver" ]] && ws="$proton/files/bin/wineserver"
         WINEPREFIX="$WINEPREFIX" "$ws" -k 2>/dev/null || true
     fi
 }
