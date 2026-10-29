@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # Версия скрипта: самообновление ставит только более новую. Увеличивать при каждом пуше
-VERSION="2026.10.29.2"
+VERSION="2026.10.30.1"
 
 APP="arizona"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/arizona-winello"
@@ -362,6 +362,29 @@ install_fonts() {
     cp -n "$bold" "$fonts/seguisb.ttf"
 }
 
+# ---------- сжатие btrfs ----------
+
+# На btrfs с compress=zstd архивы игры лежат сжатыми, и каждую подгрузку моделей процессор
+# сначала распаковывает: на слабом CPU это статтеры. Помечаем папку «не сжимать» (новые
+# файлы от обновлений лаунчера наследуют атрибут) и переписываем файлы без сжатия
+do_nocompress() {
+    local dir f n=0 tmp
+    dir=$(dirname "$LAUNCHER_EXE")/bin
+    [[ -n "$LAUNCHER_EXE" && -d "$dir" ]] || die "игра ещё не скачана"
+    [[ "$(stat -f -c %T "$dir")" == btrfs ]] || { msg "не btrfs, сжимать нечего"; return 0; }
+    pgrep -x gta_sa.exe >/dev/null && die "закрой игру, файлы нельзя переписывать на ходу"
+
+    find "$dir" -type d -exec chattr +m {} + 2>/dev/null || die "chattr +m не сработал"
+    msg "Переписываю файлы игры без сжатия, это займёт несколько минут"
+    while IFS= read -r -d '' f; do
+        tmp="$f.nocomp"
+        cp --reflink=never -p "$f" "$tmp" && mv -f "$tmp" "$f" || { rm -f "$tmp"; warn "не вышло: $f"; }
+        n=$((n + 1))
+        (( n % 200 == 0 )) && msg "… $n файлов"
+    done < <(find "$dir" -type f -size +64k -print0)
+    msg "Готово: $n файлов без сжатия"
+}
+
 # ---------- ArzMarket ----------
 
 game_dir() { # папка Arizona RP внутри лаунчера, появляется после скачивания игры
@@ -595,6 +618,7 @@ arizona-winello: Arizona Games Launcher на Linux
   arizona --arzmarket     поставить ArzMarket (MoonLoader-скрипт для рынка)
   arizona --arzmarket-remove  удалить ArzMarket и вернуть заменённые файлы
   arizona --update-wineland  проверить и поставить свежий Proton Wineland
+  arizona --nocompress    хранить файлы игры на btrfs без сжатия (меньше статтеров)
   arizona --info          показать настройки
   arizona --edit-config   открыть конфиг
   arizona --kill / --kill9  закрыть / убить всё в префиксе
@@ -617,6 +641,7 @@ case "${1:-}" in
                        install_arzmarket ;;
     --arzmarket-remove) load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe); remove_arzmarket ;;
     --update-wineland) load_config; update_wineland ;;
+    --nocompress)      load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe); do_nocompress ;;
     --info)            do_info ;;
     --edit-config)     load_config; "${EDITOR:-xdg-open}" "$CFG" ;;
     --kill)            do_kill ;;

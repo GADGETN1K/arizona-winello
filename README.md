@@ -104,6 +104,7 @@ arizona --fixfonts      подложить замену Segoe UI
 arizona --arzmarket     поставить ArzMarket
 arizona --arzmarket-remove  удалить ArzMarket и вернуть заменённые файлы
 arizona --update-wineland  проверить и поставить свежий Proton Wineland
+arizona --nocompress    хранить файлы игры на btrfs без сжатия (меньше статтеров)
 arizona --info          показать настройки
 arizona --edit-config   открыть конфиг
 arizona --kill / --kill9
@@ -142,3 +143,9 @@ XWayland и около 70 через Wayland. Для этого скрипт с�
 [Proton Wineland](https://github.com/nanomatters/proton-salkim) в
 `~/.local/share/Steam/compatibilitytools.d/` и добавляет Electron-лаунчеру `--in-process-gpu`:
 без него окно лаунчера в Wayland остаётся пустым.
+
+## Статтеры на btrfs
+
+На btrfs со сжатием (`compress=zstd`, по умолчанию в CachyOS и Fedora) архивы игры хранятся сжатыми,
+и каждую подгрузку моделей процессор сначала распаковывает. На слабом CPU это даёт статтеры при
+подгрузке. `arizona --nocompress` помечает папку игры «не сжимать» и один раз переписывает файлы.
