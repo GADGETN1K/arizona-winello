@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # Версия скрипта: самообновление ставит только более новую. Увеличивать при каждом пуше
-VERSION="2026.10.29.1"
+VERSION="2026.10.29.2"
 
 APP="arizona"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/arizona-winello"
@@ -108,26 +108,44 @@ set_config() { # ключ значение
 
 # ---------- обновление скрипта ----------
 
-# только для установленной копии (~/.local/bin/arizona), не для запуска из git-клона
+# Печатает версию из файла, если она новее текущей. raw.githubusercontent.com кэширует файлы
+# на несколько минут и после пуша может отдать старую версию: сравниваем номера, а не содержимое
+newer_version() {
+    local f="$1" v
+    head -n1 "$f" 2>/dev/null | grep -q '^#!' && bash -n "$f" 2>/dev/null || return 1
+    v=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' "$f" | head -n1)
+    [[ -n "$v" && "$v" != "$VERSION" && "$(printf '%s\n' "$VERSION" "$v" | sort -V | tail -n1)" == "$v" ]] &&
+        echo "$v"
+}
+
+# Только для установленной копии (~/.local/bin/arizona), не для запуска из git-клона.
+# Чтобы запуск не ждал GitHub, новая версия качается в фоне и ставится при следующем запуске
 self_update() {
     [[ "${SELF_UPDATE:-1}" == 1 && -z "${ARIZONA_UPDATED:-}" ]] || return 0
     [[ "$(realpath "$0")" == "$(realpath "$BIN" 2>/dev/null)" ]] || return 0
-    local new="$BIN.new"
-    local remote=""
-    # raw.githubusercontent.com кэширует файлы на несколько минут и после пуша может
-    # отдать старую версию. Поэтому сравниваем номера версий, а не содержимое
-    if curl -fsSL -m 6 -o "$new" "$SELF_URL" 2>/dev/null && head -n1 "$new" | grep -q '^#!' &&
-       bash -n "$new" 2>/dev/null &&
-       remote=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' "$new" | head -n1) && [[ -n "$remote" ]] &&
-       [[ "$remote" != "$VERSION" && "$(printf '%s\n' "$VERSION" "$remote" | sort -V | tail -n1)" == "$remote" ]]; then
-        # rename, а не перезапись: bash дочитывает запущенный скрипт по ходу выполнения
-        chmod 755 "$new" && mv -f "$new" "$BIN"
-        msg "Скрипт обновлён: $VERSION → $remote"
-        command -v notify-send >/dev/null &&
-            notify-send -a arizona-winello -i "${ICON}" "arizona-winello" "Скрипт обновлён до $remote" 2>/dev/null
-        ARIZONA_UPDATED=1 exec "$BIN" "$@"
+    local pending="$DATA/arizona.pending" remote
+
+    if [[ -f "$pending" ]]; then
+        if remote=$(newer_version "$pending"); then
+            # rename, а не перезапись: bash дочитывает запущенный скрипт по ходу выполнения
+            chmod 755 "$pending" && mv -f "$pending" "$BIN"
+            msg "Скрипт обновлён: $VERSION → $remote"
+            command -v notify-send >/dev/null &&
+                notify-send -a arizona-winello -i "${ICON}" "arizona-winello" "Скрипт обновлён до $remote" 2>/dev/null
+            ARIZONA_UPDATED=1 exec "$BIN" "$@"
+        fi
+        rm -f "$pending"
     fi
-    rm -f "$new"
+
+    (
+        tmp="$pending.part"
+        if curl -fsSL -m 30 -o "$tmp" "$SELF_URL" 2>/dev/null && newer_version "$tmp" >/dev/null; then
+            mv -f "$tmp" "$pending"
+        else
+            rm -f "$tmp"
+        fi
+    ) >/dev/null 2>&1 &
+    disown 2>/dev/null || true
 }
 
 # ---------- Proton Wineland ----------
