@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+# Версия скрипта: самообновление ставит только более новую. Увеличивать при каждом пуше
+VERSION="2026.10.29.1"
+
 APP="arizona"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}/arizona-winello"
 CFG="$DATA/config.cfg"
@@ -110,13 +113,18 @@ self_update() {
     [[ "${SELF_UPDATE:-1}" == 1 && -z "${ARIZONA_UPDATED:-}" ]] || return 0
     [[ "$(realpath "$0")" == "$(realpath "$BIN" 2>/dev/null)" ]] || return 0
     local new="$BIN.new"
+    local remote=""
+    # raw.githubusercontent.com кэширует файлы на несколько минут и после пуша может
+    # отдать старую версию. Поэтому сравниваем номера версий, а не содержимое
     if curl -fsSL -m 6 -o "$new" "$SELF_URL" 2>/dev/null && head -n1 "$new" | grep -q '^#!' &&
-       bash -n "$new" 2>/dev/null && ! cmp -s "$new" "$BIN"; then
+       bash -n "$new" 2>/dev/null &&
+       remote=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' "$new" | head -n1) && [[ -n "$remote" ]] &&
+       [[ "$remote" != "$VERSION" && "$(printf '%s\n' "$VERSION" "$remote" | sort -V | tail -n1)" == "$remote" ]]; then
         # rename, а не перезапись: bash дочитывает запущенный скрипт по ходу выполнения
         chmod 755 "$new" && mv -f "$new" "$BIN"
-        msg "Скрипт обновлён до последней версии"
+        msg "Скрипт обновлён: $VERSION → $remote"
         command -v notify-send >/dev/null &&
-            notify-send -a arizona-winello -i "${ICON}" "arizona-winello" "Скрипт обновлён до последней версии" 2>/dev/null
+            notify-send -a arizona-winello -i "${ICON}" "arizona-winello" "Скрипт обновлён до $remote" 2>/dev/null
         ARIZONA_UPDATED=1 exec "$BIN" "$@"
     fi
     rm -f "$new"
