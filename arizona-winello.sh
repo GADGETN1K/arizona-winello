@@ -183,6 +183,7 @@ update_wineland() {
         tar xf "$tmp/$name.tar.xz" -C "$COMPAT_DIR"; rm -rf "$tmp"
         [[ -x "$dir/proton" ]] || { warn "в архиве нет $name/proton"; return 1; }
     fi
+    patch_wineland "$dir"
 
     # держим текущий и новый: на текущем может идти игра, остальные удаляем
     for d in "$COMPAT_DIR"/proton-wineland*; do
@@ -193,6 +194,32 @@ update_wineland() {
     msg "Proton Wineland: $name"
 }
 
+# ProtonFixes в Wineland при каждом запуске качает манифест апскейлеров (FSR4 включён
+# всегда), таймаут 10 с. Если github.io отвечает плохо, запуск висит. Учим его брать кэш
+# моложе суток без сети. Правка накладывается заново на каждый новый релиз
+patch_wineland() {
+    local f="$1/protonfixes/upscalers.py"
+    [[ -f "$f" ]] && ! grep -q 'arizona-winello: cached manifest' "$f" || return 0
+    python3 -I - "$f" <<'PY' || warn "не удалось поправить $f"
+import sys
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+anchor = "    cached_manifest = cache_dir.joinpath('manifest.json')\n    __manifest_json = {}\n"
+fresh = anchor + """    # arizona-winello: cached manifest younger than a day, no network
+    try:
+        import time
+        if cached_manifest.exists() and time.time() - cached_manifest.stat().st_mtime < 86400:
+            with cached_manifest.open(encoding='utf-8') as manifest_fd:
+                __manifest_json = json.loads(manifest_fd.read())
+            return __manifest_json
+    except Exception:
+        __manifest_json = {}
+"""
+if s.count(anchor) != 1:
+    sys.exit(1)
+open(p, "w", encoding="utf-8").write(s.replace(anchor, fresh))
+PY
+}
+
 # перед запуском в Wayland-режиме: нет Wineland — ставим сразу, есть — раз в сутки
 # проверяем обновление в фоне, новая версия подхватится со следующего запуска
 check_wineland() {
@@ -201,6 +228,7 @@ check_wineland() {
         update_wineland || warn "Wayland-режим пойдёт на $PROTONPATH"
         return 0
     fi
+    patch_wineland "$PROTONPATH_WAYLAND"
     local last; last=$(cat "$DATA/.wineland-check" 2>/dev/null || echo 0)
     (( $(date +%s) - last > 86400 )) && { update_wineland >/dev/null 2>&1 & }
     return 0
@@ -226,6 +254,14 @@ run_wine() {
         if use_wayland; then
             export PROTON_ENABLE_WAYLAND=1
             [[ -x "${PROTONPATH_WAYLAND:-}/proton" ]] && proton="$PROTONPATH_WAYLAND"
+        fi
+        # umu на каждом запуске ходит в сеть за обновлением рантайма Steam: раз в сутки хватит
+        local stamp="$DATA/.runtime-check" last
+        last=$(cat "$stamp" 2>/dev/null || echo 0)
+        if (( $(date +%s) - last > 86400 )); then
+            date +%s > "$stamp"
+        else
+            export UMU_RUNTIME_UPDATE=0
         fi
         GAMEID="${GAMEID:-umu-arizona}" PROTONPATH="$proton" STORE=none umu-run "$@"
     else
