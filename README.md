@@ -12,6 +12,9 @@
 - подменяет Segoe UI на Noto Sans: меню игры (AZVoice, azrtc, конфигуратор) грузят Segoe UI напрямую из `C:\Windows\Fonts`;
 - удаляет файлы `*:Zone.Identifier`, которые Wine создаёт вместо скрытых потоков NTFS (из-за них игра падает на загрузке шрифтов);
 - пока идёт игра, отдаёт лаунчеру только свободное процессорное время (`SCHED_IDLE`);
+- в Wayland-сессии сам переключается на нативный Wayland-драйвер Wine и
+  [Proton Wineland](https://github.com/nanomatters/proton-salkim): скачивает последний релиз с GitHub
+  под твой уровень x86-64 (v3 или обычный) и раз в сутки проверяет обновления. В X11 работает через GE-Proton;
 - запускает через Feral GameMode, по желанию с MangoHud и лимитом FPS через DXVK;
 - создаёт ярлык в меню с иконкой из exe;
 - по флагу `--arzmarket` ставит [ArzMarket](https://github.com/FREYM1337/forumnick) (MoonLoader-скрипт
@@ -99,6 +102,7 @@ arizona --set-exe PATH  указать exe лаунчера вручную
 arizona --fixfonts      подложить замену Segoe UI
 arizona --arzmarket     поставить ArzMarket
 arizona --arzmarket-remove  удалить ArzMarket и вернуть заменённые файлы
+arizona --update-wineland  проверить и поставить свежий Proton Wineland
 arizona --info          показать настройки
 arizona --edit-config   открыть конфиг
 arizona --kill / --kill9
@@ -120,7 +124,19 @@ arizona --remove        удалить всё
 | `MANGOHUD` | `0` | оверлей MangoHud |
 | `FPS_LIMIT` | `0` | лимит FPS через DXVK, `0` = без лимита |
 | `IDLE_LAUNCHER` | `1` | `SCHED_IDLE` для лаунчера, пока идёт игра |
+| `WAYLAND` | `auto` | Wayland-драйвер Wine: `auto` — в Wayland-сессии, `1` — всегда, `0` — никогда |
+| `PROTONPATH_WAYLAND` | Proton Wineland | какой Proton брать в Wayland-режиме |
+| `WINELAND_UPDATE` | `1` | раз в сутки проверять новый релиз Wineland |
 | `EXTRA_ENV` | | доп. переменные окружения |
 
 Чтобы GameMode мог менять governor и частоты GPU, добавь себя в группу `gamemode`
 (`sudo usermod -aG gamemode $USER`), а секцию `[gpu]` положи в `/etc/gamemode.ini`.
+
+## Wayland
+
+В Wayland-сессии (`WAYLAND="auto"`) лаунчер и игра идут через нативный Wayland-драйвер Wine,
+а не через XWayland. На слабом железе это заметно быстрее: на A12-9800 было 7–30 FPS через
+XWayland и около 70 через Wayland. Для этого скрипт сам ставит
+[Proton Wineland](https://github.com/nanomatters/proton-salkim) в
+`~/.local/share/Steam/compatibilitytools.d/` и добавляет Electron-лаунчеру `--in-process-gpu`:
+без него окно лаунчера в Wayland остаётся пустым.

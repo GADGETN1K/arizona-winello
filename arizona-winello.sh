@@ -17,6 +17,8 @@ MIRRORS=(
     "https://arz-pc.react-group.tech/Arizona%20Launcher.exe"
 )
 UA="Mozilla/5.0"
+WINELAND_REPO="nanomatters/proton-salkim"
+COMPAT_DIR="$HOME/.local/share/Steam/compatibilitytools.d"
 
 msg()  { printf '\e[1;35m[arizona]\e[0m %s\n' "$*"; }
 warn() { printf '\e[1;33m[arizona]\e[0m %s\n' "$*" >&2; }
@@ -29,6 +31,10 @@ default_config() {
     for p in /usr/share/steam/compatibilitytools.d/proton-ge-custom \
              "$HOME"/.local/share/Steam/compatibilitytools.d/GE-Proton*; do
         [[ -x "$p/proton" ]] && proton="$p"
+    done
+    local wayland_proton=""   # Proton Wineland (форк proton-cachyos с Wayland по умолчанию), если стоит
+    for p in "$HOME"/.local/share/Steam/compatibilitytools.d/proton-wineland*; do
+        [[ -x "$p/proton" ]] && wayland_proton="$p"
     done
     cat <<EOF
 # Конфиг arizona-winello. Править: arizona --edit-config
@@ -61,6 +67,17 @@ MANGOHUD="0"
 # оставляет запас по теплу и TDP, и просадок становится меньше
 FPS_LIMIT="0"
 
+# Wayland-драйвер Wine вместо XWayland, только с RUNNER="umu":
+#   auto — в Wayland-сессии да, в X11 нет;  1 — всегда, когда есть Wayland;  0 — никогда
+WAYLAND="auto"
+
+# Proton для Wayland-режима, например Proton Wineland
+# (github.com/nanomatters/proton-salkim). Пусто — тот же PROTONPATH
+PROTONPATH_WAYLAND="$wayland_proton"
+
+# Раз в сутки проверять новый релиз Proton Wineland на GitHub и ставить его (1/0)
+WINELAND_UPDATE="1"
+
 # Пока запущена игра, давать лаунчеру только свободный CPU (1/0)
 IDLE_LAUNCHER="1"
 
@@ -82,6 +99,99 @@ set_config() { # ключ значение
 
 # ---------- запуск Wine/Proton ----------
 
+# ---------- Proton Wineland ----------
+
+x86_64_level() { # 1–4: какой уровень микроархитектуры x86-64 поддерживает процессор
+    local ld lvl
+    # glibc сам знает, какие уровни поддерживает CPU: «x86-64-v3 (supported, searched)»
+    for ld in /lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2 /usr/lib/ld-linux-x86-64.so.2; do
+        [[ -x "$ld" ]] || continue
+        lvl=$("$ld" --help 2>/dev/null | grep -o 'x86-64-v[234] (supported' | grep -o 'v[234]' | tr -d v | sort -n | tail -n1)
+        [[ -n "$lvl" ]] && { echo "$lvl"; return; }
+    done
+    # запасной путь: флаги из /proc/cpuinfo по определению уровней x86-64 psABI
+    local flags; flags=" $(grep -m1 '^flags' /proc/cpuinfo | cut -d: -f2) "
+    has() { local f; for f; do [[ "$flags" == *" $f "* ]] || return 1; done; }
+    if has avx512f avx512bw avx512cd avx512dq avx512vl && has avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; then echo 4
+    elif has avx avx2 bmi1 bmi2 f16c fma abm movbe xsave && has cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; then echo 3
+    elif has cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; then echo 2
+    else echo 1
+    fi
+}
+
+wineland_flavor() { # у Wineland есть сборки x86_64 и x86_64_v3 (на v4 тоже идёт v3)
+    if (( $(x86_64_level) >= 3 )); then echo x86_64_v3; else echo x86_64; fi
+}
+
+wineland_latest_url() {
+    local url tag
+    url=$(curl -fsSL -m 20 --retry 2 -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/$WINELAND_REPO/releases/latest" 2>/dev/null |
+        grep -o "\"browser_download_url\": *\"[^\"]*-$(wineland_flavor)\.tar\.xz\"" |
+        head -n1 | sed 's/.*"\(https[^"]*\)"$/\1/')
+    if [[ -z "$url" ]]; then
+        # api.github.com бывает недоступен, а github.com отвечает: тег берём из редиректа
+        tag=$(curl -fsSIL -m 20 --retry 2 -o /dev/null -w '%{url_effective}' \
+            "https://github.com/$WINELAND_REPO/releases/latest" 2>/dev/null)
+        tag=${tag##*/tag/}
+        [[ "$tag" == wineland-* ]] &&
+            url="https://github.com/$WINELAND_REPO/releases/download/$tag/proton-$tag-$(wineland_flavor).tar.xz"
+    fi
+    echo "$url"
+}
+
+update_wineland() {
+    local url name dir tmp d
+    url=$(wineland_latest_url)
+    [[ -n "$url" ]] || { warn "не удалось узнать последний релиз Proton Wineland"; return 1; }
+    name=$(basename "$url" .tar.xz)
+    dir="$COMPAT_DIR/$name"
+    date +%s > "$DATA/.wineland-check"
+
+    if [[ ! -x "$dir/proton" ]]; then
+        msg "Качаю Proton Wineland: $name"
+        tmp=$(mktemp -d)
+        if ! curl -fL --retry 3 -# -o "$tmp/$name.tar.xz" "$url" ||
+           ! curl -fsSL --retry 3 -o "$tmp/$name.sha512sum" "${url%.tar.xz}.sha512sum" ||
+           ! (cd "$tmp" && sha512sum -c "$name.sha512sum" >/dev/null); then
+            rm -rf "$tmp"; warn "не удалось скачать или проверить $name"; return 1
+        fi
+        mkdir -p "$COMPAT_DIR"
+        tar xf "$tmp/$name.tar.xz" -C "$COMPAT_DIR"; rm -rf "$tmp"
+        [[ -x "$dir/proton" ]] || { warn "в архиве нет $name/proton"; return 1; }
+    fi
+
+    # держим текущий и новый: на текущем может идти игра, остальные удаляем
+    for d in "$COMPAT_DIR"/proton-wineland*; do
+        [[ "$d" == "$dir" || "$d" == "${PROTONPATH_WAYLAND:-}" ]] || rm -rf "$d"
+    done
+    set_config PROTONPATH_WAYLAND "$dir"
+    PROTONPATH_WAYLAND="$dir"
+    msg "Proton Wineland: $name"
+}
+
+# перед запуском в Wayland-режиме: нет Wineland — ставим сразу, есть — раз в сутки
+# проверяем обновление в фоне, новая версия подхватится со следующего запуска
+check_wineland() {
+    [[ "${WINELAND_UPDATE:-1}" == 1 && "$RUNNER" == umu ]] && use_wayland || return 0
+    if [[ ! -x "${PROTONPATH_WAYLAND:-}/proton" ]]; then
+        update_wineland || warn "Wayland-режим пойдёт на $PROTONPATH"
+        return 0
+    fi
+    local last; last=$(cat "$DATA/.wineland-check" 2>/dev/null || echo 0)
+    (( $(date +%s) - last > 86400 )) && { update_wineland >/dev/null 2>&1 & }
+    return 0
+}
+
+use_wayland() {
+    [[ -n "${WAYLAND_DISPLAY:-}" ]] || return 1
+    case "${WAYLAND:-auto}" in
+        1) return 0 ;;
+        auto) [[ "${XDG_SESSION_TYPE:-wayland}" == wayland ]] ;;
+        *) return 1 ;;
+    esac
+}
+
 run_wine() {
     export WINEPREFIX LC_ALL="$LOCALE" LANG="$LOCALE"
     export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-winemenubuilder.exe=d}"
@@ -89,7 +199,12 @@ run_wine() {
     mkdir -p "$WINEPREFIX"
     if [[ "$RUNNER" == umu ]]; then
         command -v umu-run >/dev/null || die "нет umu-run (pacman -S umu-launcher)"
-        GAMEID="${GAMEID:-umu-arizona}" PROTONPATH="$PROTONPATH" STORE=none umu-run "$@"
+        local proton="$PROTONPATH"
+        if use_wayland; then
+            export PROTON_ENABLE_WAYLAND=1
+            [[ -x "${PROTONPATH_WAYLAND:-}/proton" ]] && proton="$PROTONPATH_WAYLAND"
+        fi
+        GAMEID="${GAMEID:-umu-arizona}" PROTONPATH="$proton" STORE=none umu-run "$@"
     else
         command -v wine >/dev/null || die "нет wine (лучше wine-staging)"
         wine "$@"
@@ -256,6 +371,7 @@ do_install() {
     msg "Ставлю шрифты и рантаймы (corefonts, vcrun2022), это займёт несколько минут"
     run_winetricks -q corefonts vcrun2022 || warn "winetricks завершился с ошибкой, продолжаю"
     install_fonts
+    check_wineland
 
     # electron-builder NSIS: /S ставит молча в %LOCALAPPDATA%\Programs
     msg "Тихо ставлю лаунчер"
@@ -280,6 +396,7 @@ do_run() {
     load_config
     [[ -n "$LAUNCHER_EXE" && -f "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe)
     [[ -n "$LAUNCHER_EXE" ]] || die "лаунчер не установлен: arizona-winello.sh install"
+    check_wineland
     cd "$(dirname "$LAUNCHER_EXE")"
     # игра наследует окружение лаунчера, поэтому настройки DXVK задаём здесь
     export DXVK_CONFIG="d3d9.maxFrameLatency = 1; d3d9.maxFrameRate = ${FPS_LIMIT:-0}"
@@ -312,8 +429,13 @@ do_run() {
     local cleaner=$!
     trap 'kill $cleaner 2>/dev/null' EXIT
 
+    # В Wayland-драйвере Wine окно, которое рисует отдельный GPU-процесс Electron,
+    # остаётся пустым. Рисуем в основном процессе лаунчера
+    local extra=()
+    use_wayland && extra+=(--in-process-gpu)
+
     # shellcheck disable=SC2086
-    "${wrap[@]}" "$0" --wine "$LAUNCHER_EXE" $LAUNCHER_ARGS "$@"
+    "${wrap[@]}" "$0" --wine "$LAUNCHER_EXE" $LAUNCHER_ARGS "${extra[@]}" "$@"
 }
 
 do_info() {
@@ -322,6 +444,7 @@ do_info() {
 Конфиг:    $CFG
 Префикс:   $WINEPREFIX
 Раннер:    $RUNNER  (Proton: $PROTONPATH)
+Wayland:   $WAYLAND, сейчас $(use_wayland && echo "да (${PROTONPATH_WAYLAND:-$PROTONPATH})" || echo "нет, XWayland/X11")
 Лаунчер:   ${LAUNCHER_EXE:-не найден}
 Аргументы: $LAUNCHER_ARGS
 Локаль:    $LOCALE
@@ -372,6 +495,7 @@ arizona-winello: Arizona Games Launcher на Linux
   arizona --fixfonts      подложить замену Segoe UI для меню игры
   arizona --arzmarket     поставить ArzMarket (MoonLoader-скрипт для рынка)
   arizona --arzmarket-remove  удалить ArzMarket и вернуть заменённые файлы
+  arizona --update-wineland  проверить и поставить свежий Proton Wineland
   arizona --info          показать настройки
   arizona --edit-config   открыть конфиг
   arizona --kill / --kill9  закрыть / убить всё в префиксе
@@ -393,6 +517,7 @@ case "${1:-}" in
     --arzmarket)       load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe)
                        install_arzmarket ;;
     --arzmarket-remove) load_config; [[ -n "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe); remove_arzmarket ;;
+    --update-wineland) load_config; update_wineland ;;
     --info)            do_info ;;
     --edit-config)     load_config; "${EDITOR:-xdg-open}" "$CFG" ;;
     --kill)            do_kill ;;
