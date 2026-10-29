@@ -18,6 +18,7 @@ MIRRORS=(
 )
 UA="Mozilla/5.0"
 WINELAND_REPO="nanomatters/proton-salkim"
+SELF_URL="https://raw.githubusercontent.com/GADGETN1K/arizona-winello/main/arizona-winello.sh"
 COMPAT_DIR="$HOME/.local/share/Steam/compatibilitytools.d"
 
 msg()  { printf '\e[1;35m[arizona]\e[0m %s\n' "$*"; }
@@ -78,6 +79,9 @@ PROTONPATH_WAYLAND="$wayland_proton"
 # Раз в сутки проверять новый релиз Proton Wineland на GitHub и ставить его (1/0)
 WINELAND_UPDATE="1"
 
+# При запуске обновлять сам скрипт с GitHub (1/0)
+SELF_UPDATE="1"
+
 # Пока запущена игра, давать лаунчеру только свободный CPU (1/0)
 IDLE_LAUNCHER="1"
 
@@ -98,6 +102,25 @@ set_config() { # ключ значение
 }
 
 # ---------- запуск Wine/Proton ----------
+
+# ---------- обновление скрипта ----------
+
+# только для установленной копии (~/.local/bin/arizona), не для запуска из git-клона
+self_update() {
+    [[ "${SELF_UPDATE:-1}" == 1 && -z "${ARIZONA_UPDATED:-}" ]] || return 0
+    [[ "$(realpath "$0")" == "$(realpath "$BIN" 2>/dev/null)" ]] || return 0
+    local new="$BIN.new"
+    if curl -fsSL -m 6 -o "$new" "$SELF_URL" 2>/dev/null && head -n1 "$new" | grep -q '^#!' &&
+       bash -n "$new" 2>/dev/null && ! cmp -s "$new" "$BIN"; then
+        # rename, а не перезапись: bash дочитывает запущенный скрипт по ходу выполнения
+        chmod 755 "$new" && mv -f "$new" "$BIN"
+        msg "Скрипт обновлён до последней версии"
+        command -v notify-send >/dev/null &&
+            notify-send -a arizona-winello -i "${ICON}" "arizona-winello" "Скрипт обновлён до последней версии" 2>/dev/null
+        ARIZONA_UPDATED=1 exec "$BIN" "$@"
+    fi
+    rm -f "$new"
+}
 
 # ---------- Proton Wineland ----------
 
@@ -394,6 +417,7 @@ do_install() {
 
 do_run() {
     load_config
+    self_update "$@"
     [[ -n "$LAUNCHER_EXE" && -f "$LAUNCHER_EXE" ]] || LAUNCHER_EXE=$(find_launcher_exe)
     [[ -n "$LAUNCHER_EXE" ]] || die "лаунчер не установлен: arizona-winello.sh install"
     check_wineland

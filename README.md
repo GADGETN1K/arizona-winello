@@ -88,7 +88,8 @@ cd arizona-winello
 ./arizona-winello.sh install ~/Загрузки/x.exe  # или с готовым установщиком
 ```
 
-Скрипт копирует себя в `~/.local/bin/arizona`.
+Скрипт копирует себя в `~/.local/bin/arizona` и при каждом запуске сам обновляется с GitHub
+(отключается через `SELF_UPDATE="0"`).
 
 ## Использование
 
@@ -127,6 +128,7 @@ arizona --remove        удалить всё
 | `WAYLAND` | `auto` | Wayland-драйвер Wine: `auto` — в Wayland-сессии, `1` — всегда, `0` — никогда |
 | `PROTONPATH_WAYLAND` | Proton Wineland | какой Proton брать в Wayland-режиме |
 | `WINELAND_UPDATE` | `1` | раз в сутки проверять новый релиз Wineland |
+| `SELF_UPDATE` | `1` | при запуске обновлять сам скрипт с GitHub |
 | `EXTRA_ENV` | | доп. переменные окружения |
 
 Чтобы GameMode мог менять governor и частоты GPU, добавь себя в группу `gamemode`
